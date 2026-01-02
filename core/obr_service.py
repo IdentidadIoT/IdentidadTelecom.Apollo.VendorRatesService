@@ -110,7 +110,8 @@ class OBRService:
             # 6. Generar archivo CSV
             csv_file_path = self._generate_csv_file(
                 csv_data=csv_data,
-                vendor_name="Belgacom Platinum"
+                vendor_name="Belgacom Platinum",
+                use_variable_decimals=True
             )
 
             # 7. Enviar email de éxito con CSV adjunto
@@ -188,7 +189,8 @@ class OBRService:
             # 6. Generar archivo CSV
             csv_file_path = self._generate_csv_file(
                 csv_data=csv_data,
-                vendor_name="Sunrise"
+                vendor_name="Sunrise",
+                use_variable_decimals=True
             )
 
             # 7. Enviar email de éxito con CSV adjunto
@@ -850,19 +852,19 @@ class OBRService:
                 for price_item in matching_prices:
                     if first_match is not None:
                         dial_codes = self._parse_and_split_dial_codes(price_item["dial_codes"])
-                        first_dial_code = dial_codes[0] if dial_codes else ""
 
-                        if first_dial_code.strip() and first_dial_code.strip() not in unique_dial_codes:
-                            list_to_send_in_csv.append({
-                                "destinations": first_match["destination"],
-                                "country_code": first_dial_code.strip(),
-                                "area_code": "",
-                                "country_area": first_dial_code.strip(),
-                                "price_min": first_match["rate"],
-                                "start_date": first_match["effective_date"],
-                                "origin_name": routing
-                            })
-                            unique_dial_codes.add(first_dial_code.strip())
+                        for dial_code in dial_codes:
+                            if dial_code.strip() and dial_code.strip() not in unique_dial_codes:
+                                list_to_send_in_csv.append({
+                                    "destinations": first_match["destination"],
+                                    "country_code": dial_code.strip(),
+                                    "area_code": "",
+                                    "country_area": dial_code.strip(),
+                                    "price_min": first_match["rate"],
+                                    "start_date": first_match["effective_date"],
+                                    "origin_name": routing
+                                })
+                                unique_dial_codes.add(dial_code.strip())
 
                     else:
                         same_dial_code_prices = [
@@ -874,19 +876,19 @@ class OBRService:
                             max_price_item = max(same_dial_code_prices, key=lambda x: x["rate"])
 
                             dial_codes = self._parse_and_split_dial_codes(price_item["dial_codes"])
-                            first_dial_code = dial_codes[0] if dial_codes else ""
 
-                            if first_dial_code.strip() and first_dial_code.strip() not in unique_dial_codes:
-                                list_to_send_in_csv.append({
-                                    "destinations": max_price_item["destination"],
-                                    "country_code": first_dial_code.strip(),
-                                    "area_code": "",
-                                    "country_area": first_dial_code.strip(),
-                                    "price_min": max_price_item["rate"],
-                                    "start_date": max_price_item["effective_date"],
-                                    "origin_name": routing
-                                })
-                                unique_dial_codes.add(first_dial_code.strip())
+                            for dial_code in dial_codes:
+                                if dial_code.strip() and dial_code.strip() not in unique_dial_codes:
+                                    list_to_send_in_csv.append({
+                                        "destinations": max_price_item["destination"],
+                                        "country_code": dial_code.strip(),
+                                        "area_code": "",
+                                        "country_area": dial_code.strip(),
+                                        "price_min": max_price_item["rate"],
+                                        "start_date": max_price_item["effective_date"],
+                                        "origin_name": routing
+                                    })
+                                    unique_dial_codes.add(dial_code.strip())
 
         unique_destinations_final = set()
 
@@ -913,8 +915,16 @@ class OBRService:
 
             unique_destinations_final.add(destination)
 
-        logger.info(f"Comparación Sunrise completada: {len(list_to_send_in_csv)} registros para CSV")
-        return list_to_send_in_csv
+        seen = set()
+        deduplicated_list = []
+        for item in list_to_send_in_csv:
+            key = (item["country_code"], item["price_min"], item["origin_name"])
+            if key not in seen:
+                seen.add(key)
+                deduplicated_list.append(item)
+
+        logger.info(f"Comparación Sunrise completada: {len(deduplicated_list)} registros para CSV")
+        return deduplicated_list
 
     def _compare_qxtel_data(
         self,
@@ -2076,8 +2086,12 @@ class OBRService:
             new_price_list = self.excel_service.read_orange_telecom_new_price(temp_file_path)
             origins = self.excel_service.read_orange_telecom_origins(temp_file_path)
             logger.info(f"[ORANGE TELECOM] Leído - PL:{len(price_list)}, NP:{len(new_price_list)}, OR:{len(origins)}")
+            logger.info(f"[ORANGE TELECOM DEBUG] Primeros 3 price_list: {price_list[:3] if price_list else 'EMPTY'}")
+            logger.info(f"[ORANGE TELECOM DEBUG] Primeros 3 new_price_list: {new_price_list[:3] if new_price_list else 'EMPTY'}")
+            logger.info(f"[ORANGE TELECOM DEBUG] Primeros 3 origins: {origins[:3] if origins else 'EMPTY'}")
             obr_master_data = self._get_obr_master_data_cached()
             csv_data = self._compare_orange_telecom_data(price_list, new_price_list, origins, obr_master_data)
+            logger.info(f"[ORANGE TELECOM DEBUG] Primeros 3 csv_data: {csv_data[:3] if csv_data else 'EMPTY'}")
             csv_file_path = self._generate_csv_file(csv_data, "Orange Telecom")
             await self.email_service.send_obr_success_email(user_email, "Orange Telecom", csv_file_path)
             self.file_manager.delete_temp_file(temp_file_path)
@@ -2088,10 +2102,16 @@ class OBRService:
             await self.email_service.send_obr_error_email(user_email, "Orange Telecom", str(e))
 
     def _compare_orange_telecom_data(self, price_list, new_price_list, origins, obr_master_data):
-        """Orange Telecom: Code.StartsWith, Origin.Contains + OriginCode match"""
-        list_to_send_in_csv, unique_codes = [], set()
+        """Orange Telecom: Code.StartsWith, Origin.Contains + OriginCode match
+
+        IMPORTANTE: Replica exactamente el comportamiento del C# que:
+        1. Procesa registros con lógica de comparación (líneas 2907-2948 del C#)
+        2. Agrega TODOS los registros de price_list al final SIN deduplicación (líneas 2950-2961 del C#)
+        """
+        list_to_send_in_csv = []
         vendor_data = [v for v in obr_master_data if v["vendor"].upper() == "ORANGE TELECOM"]
 
+        # C#: Líneas 2907-2948 - Procesamiento con lógica de comparación
         origins_by_code = {}
         for o in origins:
             key = o["origin_code"]
@@ -2114,15 +2134,29 @@ class OBRService:
 
             for item in prices_filtered:
                 new_price = next((np for np in available_new_prices if np["destination"] == item["destination"]), None)
-                code = item["code"]
-                if code not in unique_codes:
-                    unique_codes.add(code)
-                    list_to_send_in_csv.append({"destinations": item["destination"], "country_code": code, "area_code": "", "country_area": code, "price_min": new_price["new_rate"] if new_price else item["rate"], "start_date": new_price["effective_date"] if new_price else item["effective_date"], "origin_name": routing})
+                list_to_send_in_csv.append({
+                    "destinations": item["destination"],
+                    "country_code": item["code"],
+                    "area_code": "",
+                    "country_area": item["code"],
+                    "price_min": new_price["new_rate"] if new_price else item["rate"],
+                    "start_date": new_price["effective_date"] if new_price else item["effective_date"],
+                    "origin_name": routing
+                })
 
+        # C#: Líneas 2950-2961 - Agregar TODOS los registros de price_list con routing=""
+        # SIN deduplicación (el C# no verifica duplicados, simplemente agrega todo)
         for item in price_list:
-            if item["code"] not in unique_codes:
-                unique_codes.add(item["code"])
-                list_to_send_in_csv.append({"destinations": item["destination"], "country_code": item["code"], "area_code": "", "country_area": item["code"], "price_min": item["rate"], "start_date": item["effective_date"], "origin_name": ""})
+            list_to_send_in_csv.append({
+                "destinations": item["destination"],
+                "country_code": item["code"],
+                "area_code": "",
+                "country_area": item["code"],
+                "price_min": item["rate"],
+                "start_date": item["effective_date"],
+                "origin_name": ""
+            })
+
         logger.info(f"Orange Telecom: {len(list_to_send_in_csv)} registros")
         return list_to_send_in_csv
 
@@ -2301,18 +2335,14 @@ class OBRService:
         self,
         csv_data: List[Dict[str, Any]],
         vendor_name: str,
-        decimal_places: int = 4
+        decimal_places: int = 4,
+        use_variable_decimals: bool = False
     ) -> str:
-        """
-        Genera archivo CSV con los resultados
-        """
         timestamp = datetime.now().strftime("%m_%d_%Y")
         file_name = f"{vendor_name}-{timestamp}.csv"
         file_path = self.file_manager.get_temp_file_path(file_name)
 
         try:
-            # Ordenar datos para orden determinístico (igual que C#)
-            # Ordenar por: country_code, destinations, origin_name
             sorted_csv_data = sorted(
                 csv_data,
                 key=lambda x: (
@@ -2325,16 +2355,14 @@ class OBRService:
             with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.writer(csvfile)
 
-                # Header
                 writer.writerow([
                     "CountryCode - Destination",
                     "Dial codes",
                     "Price",
                     "Effective Date",
-                    "Origin"
+                    "Routing"
                 ])
 
-                # Data rows
                 for item in sorted_csv_data:
                     start_date = item["start_date"]
                     if isinstance(start_date, str) and " " in start_date:
@@ -2342,7 +2370,13 @@ class OBRService:
 
                     price = item["price_min"]
                     if isinstance(price, (int, float)):
-                        price = format(float(price), f'.{decimal_places}f')
+                        if use_variable_decimals:
+                            price_str = str(float(price))
+                            if '.' in price_str:
+                                price_str = price_str.rstrip('0').rstrip('.')
+                            price = price_str
+                        else:
+                            price = format(float(price), f'.{decimal_places}f')
 
                     writer.writerow([
                         item["destinations"],
@@ -2395,7 +2429,7 @@ class OBRService:
                     "Dial codes",
                     "Price",
                     "Effective Date",
-                    "Origin"
+                    "Routing"
                 ])
 
                 # Data rows

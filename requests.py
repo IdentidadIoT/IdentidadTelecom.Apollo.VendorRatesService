@@ -14,6 +14,7 @@ class UploadFileVendorRequest(BaseModel):
     user: str = Field(..., description="Usuario que realiza la carga")
     file_content: bytes = Field(..., description="Contenido del archivo Excel en bytes")
     file_name: str = Field(..., description="Nombre del archivo original")
+    max_line: Optional[int] = Field(None, description="Número máximo de línea a procesar del Excel")
 
     class Config:
         json_schema_extra = {

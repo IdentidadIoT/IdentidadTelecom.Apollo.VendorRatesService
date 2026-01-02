@@ -21,12 +21,14 @@ class SheetConfig:
         column_mapping: Diccionario que mapea nombres de campos a índices de columna (0-indexed)
         transformations: Funciones de transformación opcionales para campos específicos
         fallback_sheet: Nombre alternativo de hoja o "FIRST" para usar la primera hoja
+        max_row: Fila máxima a leer (opcional). Si no se especifica, usa sheet.max_row
     """
     name: str
     start_row: int
     column_mapping: Dict[str, int]
     transformations: Optional[Dict[str, Callable]] = None
     fallback_sheet: Optional[str] = None
+    max_row: Optional[int] = None
 
 
 @dataclass
@@ -83,21 +85,43 @@ class ExcelReaderBase:
                 workbook.close()
                 return []
 
-            # Leer filas - IGUAL que código C# (usa LastRowUsed, lee hasta el final sin parar)
-            # C#: int lastRow = worksheet.LastRowUsed().RowNumber();
-            #     for (int i = 9; i <= lastRow; i++) { ... }
-            last_row = sheet.max_row
-            logger.debug(f"[{vendor_name}] {config.name}: Leyendo filas {config.start_row} a {last_row}")
+            # Leer filas - IGUAL que código C# (usa UsedCellRange.RowCount y ColumnCount)
+            # C#: CellRange usedRange = worksheet.UsedCellRange;
+            #     int lastRow = usedRange.RowCount;
+            #     int lastColumn = usedRange.ColumnCount;
+            #     for (int i = 19; i < lastRow; i++) {
+            #         for (int j = 0; j < lastColumn; j++) { ... }
+            #     }
+
+            # Calcular last_row (igual que antes)
+            if config.max_row is not None:
+                last_row = config.max_row
+            # Si sheet.max_row parece incorrecto (menor o igual a start_row), calcular manualmente
+            elif sheet.max_row <= config.start_row:
+                logger.warning(f"[{vendor_name}] {config.name}: sheet.max_row={sheet.max_row} parece incorrecto (start_row={config.start_row}), calculando rango real...")
+                workbook.close()
+                # Reabrir en modo NO read-only para calcular dimensiones correctas
+                wb_calc = openpyxl.load_workbook(file_path, read_only=False, data_only=True)
+                sheet_calc = ExcelReaderBase._find_sheet(wb_calc, config)
+                last_row = sheet_calc.max_row
+                last_column = sheet_calc.max_column
+                wb_calc.close()
+                # Reabrir en read-only para lectura eficiente
+                workbook = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+                sheet = ExcelReaderBase._find_sheet(workbook, config)
+                logger.info(f"[{vendor_name}] {config.name}: Rango calculado correctamente, max_row={last_row}, max_column={last_column}")
+            else:
+                last_row = sheet.max_row
+                last_column = sheet.max_column
+
+            logger.info(f"[{vendor_name}] {config.name}: Leyendo filas {config.start_row} a {last_row}, columnas hasta {last_column}")
 
             data = []
-            for row in sheet.iter_rows(min_row=config.start_row, max_row=last_row, values_only=True):
-                # Mapear columnas a campos
+            for row in sheet.iter_rows(min_row=config.start_row, max_row=last_row, max_col=last_column, values_only=True):
                 item = {}
                 for field_name, col_idx in config.column_mapping.items():
-                    # Obtener valor de la celda (si existe)
                     value = row[col_idx] if col_idx >= 0 and len(row) > col_idx else None
 
-                    # Aplicar transformación si existe
                     if config.transformations and field_name in config.transformations:
                         try:
                             value = config.transformations[field_name](value, row)
