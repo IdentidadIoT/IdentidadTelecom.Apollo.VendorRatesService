@@ -2068,7 +2068,13 @@ class OBRService:
             obr_master_data = self._get_obr_master_data_cached()
             csv_data = self._compare_deutsche_data(price_list, new_price_list, origins, obr_master_data)
 
-            csv_file_path = self._generate_csv_file(csv_data, "Deutsche Telecom")
+            # Generar CSV con 6 decimales fijos (como C#)
+            csv_file_path = self._generate_csv_file(
+                csv_data=csv_data,
+                vendor_name="Deutsche Telecom",
+                decimal_places=6,
+                use_variable_decimals=False
+            )
             await self.email_service.send_obr_success_email(to_email=user_email, vendor_name="Deutsche Telecom", csv_file_path=csv_file_path)
 
             self.file_manager.delete_temp_file(temp_file_path)

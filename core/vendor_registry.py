@@ -29,6 +29,10 @@ VENDOR_REGISTRY: Dict[str, Dict[str, Any]] = {
         "processor_type": "two_sheet",
         "comparison_strategy": "belgacom",
         "process_method_name": "process_belgacom_file",
+        "decimal_format": {
+            "type": "variable",  # "variable" o "fixed"
+            "places": None  # Número de decimales si es fixed
+        },
         "file_requirement": {
             "type": "single",
             "sheets": 2,
@@ -43,6 +47,10 @@ VENDOR_REGISTRY: Dict[str, Dict[str, Any]] = {
         "processor_type": "two_sheet",
         "comparison_strategy": "sunrise",
         "process_method_name": "process_sunrise_file",
+        "decimal_format": {
+            "type": "variable",
+            "places": None
+        },
         "file_requirement": {
             "type": "single",
             "sheets": 2,
@@ -145,6 +153,10 @@ VENDOR_REGISTRY: Dict[str, Dict[str, Any]] = {
         "processor_type": "three_sheet",
         "comparison_strategy": "oteglobe",  # Reutiliza estrategia de Oteglobe
         "process_method_name": "process_deutsche_file",
+        "decimal_format": {
+            "type": "fixed",
+            "places": 6  # Deutsche usa 6 decimales fijos
+        },
         "file_requirement": {
             "type": "single",
             "sheets": 3,
@@ -205,6 +217,10 @@ VENDOR_REGISTRY: Dict[str, Dict[str, Any]] = {
         "processor_type": "qxtel_special",
         "comparison_strategy": "oteglobe",  # Usa misma estrategia que Oteglobe
         "process_method_name": "process_qxtel_file",
+        "decimal_format": {
+            "type": "variable",
+            "places": None
+        },
         "file_requirement": {
             "type": "multiple",
             "count": 3,
