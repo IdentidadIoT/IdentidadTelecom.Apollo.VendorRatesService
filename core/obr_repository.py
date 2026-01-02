@@ -28,7 +28,8 @@ class OBRRepository:
                     OriginCode,
                     DestinyCode,
                     Destiny,
-                    Routing
+                    Routing,
+                    Origin
                 FROM OBRVendor
                 ORDER BY Vendor, OriginCode, DestinyCode
             """)
@@ -44,7 +45,8 @@ class OBRRepository:
                     "origin_code": row[1],
                     "destiny_code": row[2],
                     "destiny": row[3],
-                    "routing": row[4]
+                    "routing": row[4],
+                    "origin": row[5]
                 })
 
             logger.info(f"OBR Master Data obtenido: {len(master_data)} registros")

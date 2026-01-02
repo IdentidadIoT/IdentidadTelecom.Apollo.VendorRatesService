@@ -71,8 +71,10 @@ class ExcelReaderBase:
             Exception: Si ocurre un error al leer el archivo
         """
         try:
-            # Abrir workbook
-            workbook = openpyxl.load_workbook(file_path, data_only=True)
+            # Abrir workbook en modo read-only para MÁXIMA VELOCIDAD con archivos grandes
+            # read_only=True usa streaming y no carga todo en memoria
+            # data_only=True obtiene valores evaluados en vez de fórmulas
+            workbook = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
 
             # Buscar hoja (con fallback si está configurado)
             sheet = ExcelReaderBase._find_sheet(workbook, config)

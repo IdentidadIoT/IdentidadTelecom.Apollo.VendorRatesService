@@ -390,7 +390,7 @@ VENDOR_EXCEL_CONFIGS = {
                 }
             ),
             "origins": SheetConfig(
-                name="Origin DialCodes",
+                name="Origin Dialcodes",
                 start_row=16,
                 column_mapping={
                     "origin": 0,
@@ -631,9 +631,61 @@ VENDOR_EXCEL_CONFIGS = {
     ),
 
     # ------------------------------------------------------------------------
-    # PHONETIC LIMITED (Alias a Apelby - configuración idéntica)
+    # PHONETIC LIMITED
     # ------------------------------------------------------------------------
-    "phonetic": None,  # Se resuelve mediante get_vendor_config()
+    "phonetic": VendorExcelConfig(
+        vendor_name="Phonetic Limited",
+        sheets={
+            "price_list": SheetConfig(
+                name="Rates",
+                start_row=44,
+                column_mapping={
+                    "destination": 0,
+                    "code": 1,
+                    "rate": 2,
+                    "effective_date": 3,
+                    "routing": -1
+                },
+                transformations={
+                    "destination": strip_string,
+                    "code": strip_string,
+                    "rate": parse_float_simple,
+                    "effective_date": strip_string,
+                    "routing": empty_string
+                }
+            ),
+            "new_price": SheetConfig(
+                name="Origin Rates",
+                start_row=8,
+                column_mapping={
+                    "origin": 0,
+                    "destination": 1,
+                    "dial_code": 2,
+                    "rate": 3,
+                    "effective_date": 4
+                },
+                transformations={
+                    "origin": strip_string,
+                    "destination": strip_string,
+                    "dial_code": strip_string,
+                    "rate": parse_float_simple,
+                    "effective_date": strip_string
+                }
+            ),
+            "origins": SheetConfig(
+                name="Origin zones",
+                start_row=1,
+                column_mapping={
+                    "origin": 0,
+                    "origin_code": 1
+                },
+                transformations={
+                    "origin": strip_string,
+                    "origin_code": strip_string
+                }
+            )
+        }
+    ),
 }
 
 
@@ -662,10 +714,6 @@ def get_vendor_config(vendor_key: str) -> VendorExcelConfig:
         # Orange France Win usa misma config que Platinum
         if vendor_key == "orange_france_win":
             return VENDOR_EXCEL_CONFIGS["orange_france_platinum"]
-
-        # Phonetic Limited usa misma config que Apelby
-        if vendor_key == "phonetic":
-            return VENDOR_EXCEL_CONFIGS["apelby"]
 
     return config
 
