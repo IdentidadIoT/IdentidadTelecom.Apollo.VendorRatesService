@@ -280,10 +280,11 @@ class OBRService:
                 obr_master_data=obr_master_data
             )
 
-            # 6. Generar archivo CSV
+            # 6. Generar archivo CSV (con decimales variables, igual que Belgacom)
             csv_file_path = self._generate_csv_file(
                 csv_data=csv_data,
-                vendor_name="Qxtel"
+                vendor_name="Qxtel",
+                use_variable_decimals=True
             )
 
             # 7. Enviar email de éxito con CSV adjunto
@@ -2371,9 +2372,10 @@ class OBRService:
                     price = item["price_min"]
                     if isinstance(price, (int, float)):
                         if use_variable_decimals:
-                            price_str = str(float(price))
-                            if '.' in price_str:
-                                price_str = price_str.rstrip('0').rstrip('.')
+                            # Formatear con suficientes decimales para evitar notación científica
+                            # Luego remover ceros al final (como C# ToString())
+                            price_str = f"{float(price):.10f}"
+                            price_str = price_str.rstrip('0').rstrip('.')
                             price = price_str
                         else:
                             price = format(float(price), f'.{decimal_places}f')
