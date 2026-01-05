@@ -177,7 +177,7 @@ class EmailService:
         Compatible con Templates.GetMessageTemplate() del backend .NET
         """
         try:
-            template_path = Path(__file__).parent.parent / "templates" / "email_template.html"
+            template_path = Path(__file__).parent / "email_template.html"
             with open(template_path, "r", encoding="utf-8") as file:
                 template = file.read()
                 return template.replace("[message]", message)

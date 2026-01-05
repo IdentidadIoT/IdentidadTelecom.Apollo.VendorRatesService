@@ -5,8 +5,8 @@ Endpoints para carga y gestión de tarifas de vendors (Belgacom, Qxtel, etc.)
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
-from requests import OBRProcessResponse, UploadFileVendorRequest, UploadFileVendorQxtelRequest
-from core.auth import verify_user_has_obr_permission, TokenData
+from schemas import OBRProcessResponse, UploadFileVendorRequest, UploadFileVendorQxtelRequest
+from core.auth import verify_token_dependency
 from dependencies import get_db, SessionLocal
 from core.obr_service import OBRService
 from core.vendor_registry import find_vendor_by_name, get_supported_vendors
@@ -114,7 +114,7 @@ def _process_qxtel_background(
 async def file_obr_comparison(
     request: UploadFileVendorRequest,
     background_tasks: BackgroundTasks,
-    current_user: TokenData = Depends(verify_user_has_obr_permission)
+    auth: str = Depends(verify_token_dependency)
 ):
     """
     Comparación de tarifas OBR del vendor vs Mera (switches)
@@ -238,7 +238,7 @@ async def file_obr_comparison(
 async def file_obr_comparison_qxtel(
     request: UploadFileVendorQxtelRequest,
     background_tasks: BackgroundTasks,
-    current_user: TokenData = Depends(verify_user_has_obr_permission)
+    auth: str = Depends(verify_token_dependency)
 ):
     """
     Comparación de tarifas OBR de Qxtel vs Mera (switches)

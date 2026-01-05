@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
 
 from config import get_settings
 from core.logging import logger
+from core.auth import init_auth
+from core import auth_routes
 import worker_obr
 
 
@@ -27,6 +29,10 @@ async def lifespan(app: FastAPI):
     logger.info(f"Cache TTL: {settings.cache_ttl_seconds} segundos")
     logger.info(f"Application Insights: {'Enabled' if settings.appinsights_enabled else 'Disabled'}")
     logger.info("=" * 60)
+
+    # Inicializar autenticación JWT
+    init_auth()
+    logger.info("JWT Authentication initialized")
 
     yield
 
@@ -54,6 +60,7 @@ app.add_middleware(
 
 
 # Registrar rutas
+app.include_router(auth_routes.router)
 app.include_router(worker_obr.router)
 
 

@@ -1,124 +1,258 @@
 """
-Autenticación y autorización OAuth2 Bearer Token
-Compatible con el backend .NET usando validación delegada
+Sistema de autenticación JWT para VendorRatesService
+Basado en Finance.ReportGenerator
+
+Autor: Identidad Technologies
+Fecha: 2026-01-02
 """
-from typing import Optional
-import httpx
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
-
-from config import get_settings
+import jwt
+import configparser
+from pathlib import Path
+from typing import Optional, Dict
+from fastapi import Header, HTTPException, status, Depends
+from pydantic import BaseModel
 from core.logging import logger
-from dependencies import get_db
-from core.obr_repository import OBRRepository
+
+# ============================================================================
+# VARIABLES GLOBALES - Credenciales JWT
+# ============================================================================
+
+_client: Optional[str] = None
+_password: Optional[str] = None
+_secret: Optional[str] = None
+_id: Optional[str] = None
+_issuer: Optional[str] = None
+
+__all__ = ['init_auth', 'generate_token', 'validate_token', 'verify_token_dependency', 'LoginRequest', 'LoginResponse']
 
 
-security = HTTPBearer()
-settings = get_settings()
+# ============================================================================
+# FUNCIÓN: Inicialización
+# ============================================================================
 
-
-class TokenData:
-    """Datos extraídos del token"""
-    def __init__(self, username: str, user_id: Optional[str] = None, email: Optional[str] = None):
-        self.username = username
-        self.user_id = user_id
-        self.email = email
-
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-) -> TokenData:
+def init_auth():
     """
-    Valida el token Bearer delegando al backend .NET
-    Compatible con tokens OAuth de ASP.NET Identity
+    Inicializa el sistema de autenticación JWT.
+    Lee credenciales desde config/auth_config.cfg
 
-    NOTA: En modo BYPASS_AUTH=true (desarrollo/testing), se omite la validación.
-    En producción, BYPASS_AUTH DEBE ser false para validar tokens contra el backend .NET.
+    DEBE llamarse al inicio en main.py antes de levantar el servidor.
+
+    Raises:
+        FileNotFoundError: Si no existe auth_config.cfg
+        KeyError: Si falta alguna configuración requerida
     """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="No se pudo validar las credenciales",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    global _client, _password, _secret, _id, _issuer
 
-    # ============================================================================
-    # BYPASS DE AUTENTICACIÓN - SOLO PARA DESARROLLO/TESTING
-    # ============================================================================
-    # IMPORTANTE: Este bypass permite testing sin el backend .NET funcionando.
-    # En producción, BYPASS_AUTH debe ser FALSE en config/config.cfg
-    # ============================================================================
-    if settings.bypass_auth:
-        logger.warning("⚠️  BYPASS_AUTH está activado - Autenticación omitida (SOLO para desarrollo)")
-        logger.warning("⚠️  En producción, configurar BYPASS_AUTH=false en config/config.cfg")
+    logger.info('=' * 80)
+    logger.info('[AUTH JWT] Iniciando sistema de autenticación')
+    logger.info('=' * 80)
 
-        # Retornar usuario mock para testing
-        return TokenData(
-            username="test_user",
-            user_id="test_id",
-            email="test@apollo.com"
-        )
+    # Construir path al archivo de configuración
+    config_path = Path(__file__).parent.parent / 'config' / 'auth_config.cfg'
 
-    # ============================================================================
-    # VALIDACIÓN DE TOKEN CONTRA BACKEND .NET - PRODUCCIÓN
-    # ============================================================================
-    # Esta es la validación real que debe usarse en producción.
-    # El backend .NET debe implementar el endpoint /api/Account/UserInfo
-    # que recibe el token Bearer y retorna la información del usuario.
-    # ============================================================================
+    logger.info(f'[AUTH JWT] Buscando configuración en: {config_path}')
+
+    if not config_path.exists():
+        error_msg = f"Archivo de configuración JWT no encontrado: {config_path}"
+        logger.error(f'[AUTH JWT] ERROR: {error_msg}')
+        raise FileNotFoundError(error_msg)
+
+    # Leer configuración
+    config = configparser.ConfigParser()
+    config.read(config_path)
+
     try:
-        token = credentials.credentials
+        _client = config.get('Apollo_Auth', 'client')
+        _password = config.get('Apollo_Auth', 'password')
+        _secret = config.get('Apollo_Auth', 'secret')
+        _id = config.get('Apollo_Auth', 'id')
+        _issuer = config.get('Apollo_Auth', 'issuer')
 
-        # Validar token llamando al backend .NET
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                f"{settings.backend_url}/api/Account/UserInfo",
-                headers={"Authorization": f"Bearer {token}"}
-            )
+        logger.info(f'[AUTH JWT] [OK] Cliente: {_client}')
+        logger.info(f'[AUTH JWT] [OK] Issuer: {_issuer}')
+        logger.info(f'[AUTH JWT] [OK] ID: {_id}')
+        logger.info(f'[AUTH JWT] [OK] Secret: {"*" * len(_secret)} (oculto)')
+        logger.info('[AUTH JWT] Sistema de autenticación JWT inicializado correctamente')
+        logger.info('=' * 80)
 
-            if response.status_code != 200:
-                logger.warning(f"Token inválido o expirado (status {response.status_code})")
-                raise credentials_exception
+    except (configparser.NoSectionError, configparser.NoOptionError) as e:
+        error_msg = f"Configuración JWT incompleta en {config_path}: {e}"
+        logger.error(f'[AUTH JWT] ERROR: {error_msg}')
+        raise KeyError(error_msg)
 
-            user_data = response.json()
 
-            # Extraer información del usuario
-            username = user_data.get("UserName") or user_data.get("userName")
-            email = user_data.get("Email") or user_data.get("email")
-            user_id = user_data.get("Id") or user_data.get("id")
+# ============================================================================
+# FUNCIÓN: Generar Token JWT
+# ============================================================================
 
-            if not username:
-                logger.warning("Token válido pero sin username")
-                raise credentials_exception
+def generate_token(auth_data: Dict[str, str]) -> Optional[str]:
+    """
+    Genera un token JWT si las credenciales son válidas.
 
-            logger.info(f"Usuario autenticado: {username}")
-            return TokenData(username=username, user_id=user_id, email=email)
+    EXACTAMENTE igual que Finance.ReportGenerator/core/auth.py
 
-    except httpx.RequestError as e:
-        logger.error(f"Error conectando con backend .NET: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No se pudo validar el token - backend no disponible"
+    Args:
+        auth_data: dict con keys 'username' y 'password'
+
+    Returns:
+        str: Token JWT firmado con HS256
+        None: Si credenciales inválidas
+
+    Example:
+        >>> token = generate_token({
+        ...     "username": "apollo",
+        ...     "password": "1d3nt1d@d5m5."
+        ... })
+        >>> print(token)
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+    """
+    username = auth_data.get('username')
+    password = auth_data.get('password')
+
+    logger.info(f'[AUTH JWT] Intento de autenticación - Usuario: {username}')
+
+    # Validar credenciales (EXACTO como Finance.ReportGenerator)
+    if username == _client and password == _password:
+        # Construir payload (EXACTO como Finance.ReportGenerator)
+        payload_data = {
+            "name": _client,
+            "id": _id,
+            "iss": _issuer
+        }
+
+        # Generar token con HS256
+        token = jwt.encode(payload_data, _secret, algorithm="HS256")
+
+        logger.info(f'[AUTH JWT] [OK] Token generado exitosamente para: {_client}')
+
+        return token
+    else:
+        logger.warning(f'[AUTH JWT] [ERROR] Autenticación fallida - Usuario: {username}')
+        return None
+
+
+# ============================================================================
+# FUNCIÓN: Validar Token JWT
+# ============================================================================
+
+def validate_token(token: str) -> str:
+    """
+    Valida un token JWT.
+
+    EXACTAMENTE igual que Finance.ReportGenerator/core/auth.py
+
+    Args:
+        token: Token JWT (puede incluir "Bearer " o "bearer " prefix)
+
+    Returns:
+        str: "Ok" si el token es válido
+
+    Raises:
+        Exception: "Error signature has expired" si expiró
+        Exception: "Error invalid token" si es inválido
+
+    Example:
+        >>> validate_token("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
+        'Ok'
+    """
+    try:
+        # Limpiar token (EXACTO como Finance.ReportGenerator)
+        clean_token = token.replace("bearer", "").replace('Bearer', '').strip()
+
+        logger.debug(f'[AUTH JWT] Validando token: {clean_token[:20]}...')
+
+        # Decodificar y validar (EXACTO como Finance.ReportGenerator)
+        decoded = jwt.decode(
+            clean_token,
+            _secret,
+            issuer=_issuer,
+            algorithms=["HS256"]
         )
+
+        logger.debug(f'[AUTH JWT] [OK] Token válido - Usuario: {decoded.get("name")}')
+
+        return "Ok"
+
+    except jwt.ExpiredSignatureError:
+        logger.error('[AUTH JWT] [ERROR] Token expirado')
+        raise Exception("Error signature has expired")
+
+    except jwt.InvalidTokenError as e:
+        logger.error(f'[AUTH JWT] [ERROR] Token inválido: {e}')
+        raise Exception("Error invalid token")
+
+
+# ============================================================================
+# DEPENDENCIA FASTAPI: Para usar en endpoints
+# ============================================================================
+
+async def verify_token_dependency(authorization: str = Header(..., description="Bearer JWT token")) -> str:
+    """
+    Dependencia de FastAPI para validar tokens JWT en endpoints.
+
+    USO EN ENDPOINTS:
+        @router.post("/endpoint")
+        async def mi_endpoint(auth: str = Depends(verify_token_dependency)):
+            # Endpoint protegido
+            return {"status": "ok"}
+
+    Args:
+        authorization: Header "Authorization: Bearer <token>"
+
+    Returns:
+        str: "Ok" si válido
+
+    Raises:
+        HTTPException 401: Si falta header o token inválido
+    """
+    if not authorization:
+        logger.warning('[AUTH JWT] Request sin Authorization header')
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authorization header",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    try:
+        return validate_token(authorization)
+
     except Exception as e:
-        logger.error(f"Error validando token: {e}")
-        raise credentials_exception
+        logger.error(f'[AUTH JWT] Validación fallida: {e}')
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+            headers={"WWW-Authenticate": "Bearer"}
+        )
 
 
-async def verify_user_has_obr_permission(
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-) -> TokenData:
-    """
-    Verifica que el usuario tenga permisos para cargar archivos OBR
-    """
-    # Aquí puedes agregar validación de roles específicos si es necesario
-    # Por ahora, si está autenticado, tiene permiso
+# ============================================================================
+# MODELOS PYDANTIC: Para endpoint de login
+# ============================================================================
 
-    repository = OBRRepository(db)
-    # Puedes verificar roles desde la BD si es necesario
-    # has_permission = repository.user_has_obr_permission(current_user.username)
+class LoginRequest(BaseModel):
+    """Request para endpoint /api/auth/login"""
+    username: str
+    password: str
 
-    return current_user
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "username": "apollo",
+                "password": "1d3nt1d@d5m5."
+            }
+        }
+
+
+class LoginResponse(BaseModel):
+    """Response del endpoint /api/auth/login"""
+    access_token: str
+    token_type: str = "Bearer"
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "token_type": "Bearer"
+            }
+        }
