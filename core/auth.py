@@ -34,12 +34,12 @@ __all__ = ['init_auth', 'generate_token', 'validate_token', 'verify_token_depend
 def init_auth():
     """
     Inicializa el sistema de autenticación JWT.
-    Lee credenciales desde config/auth_config.cfg
+    Lee credenciales desde config/config.cfg
 
     DEBE llamarse al inicio en main.py antes de levantar el servidor.
 
     Raises:
-        FileNotFoundError: Si no existe auth_config.cfg
+        FileNotFoundError: Si no existe config.cfg
         KeyError: Si falta alguna configuración requerida
     """
     global _client, _password, _secret, _id, _issuer
@@ -49,7 +49,7 @@ def init_auth():
     logger.info('=' * 80)
 
     # Construir path al archivo de configuración
-    config_path = Path(__file__).parent.parent / 'config' / 'auth_config.cfg'
+    config_path = Path(__file__).parent.parent / 'config' / 'config.cfg'
 
     logger.info(f'[AUTH JWT] Buscando configuración en: {config_path}')
 

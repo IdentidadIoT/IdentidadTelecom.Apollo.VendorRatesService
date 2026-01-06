@@ -320,7 +320,7 @@ WantedBy=multi-user.target
 
 ## Licencia
 
-Propiedad de IdentidadIoT
+Propiedad de IdentidadIech
 
 ## Soporte
 

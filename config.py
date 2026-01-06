@@ -20,7 +20,7 @@ class Settings:
         self.app_name = "VendorRatesService"
         self.app_version = "1.0.0"
         self.debug = False
-        self.port = 63400
+        self.port = int(self._get_param('General', 'port', '63400'))
 
         # Base de datos
         self.db_driver = self._get_param('Database_SQLServer', 'DB_DRIVER', 'ODBC Driver 17 for SQL Server')
@@ -30,8 +30,7 @@ class Settings:
         self.db_password = self._get_param('Database_SQLServer', 'DB_PASSWORD')
         self.db_trusted_connection = self._get_param('Database_SQLServer', 'DB_TRUSTED_CONNECTION', 'no')
 
-        # Backend .NET (para validación de tokens OAuth)
-        self.backend_url = self._get_param('Backend_NET', 'BACKEND_URL')
+        # Autenticación
         bypass_auth_str = self._get_param('Authentication', 'BYPASS_AUTH', 'false')
         self.bypass_auth = bypass_auth_str.lower() in ('true', '1', 'yes')
 

@@ -44,16 +44,12 @@ def setup_logging() -> logging.Logger:
             azure_handler = AzureLogHandler(
                 connection_string=f"InstrumentationKey={settings.appinsights_instrumentation_key}"
             )
-            # Verificar que el handler tenga lock inicializado (compatibilidad Python 3.13)
-            if hasattr(azure_handler, 'lock') and azure_handler.lock is not None:
-                azure_handler.setFormatter(formatter)
-                logger.addHandler(azure_handler)
-                print("[INFO] Application Insights habilitado correctamente")
-            else:
-                print("[WARNING] Application Insights no compatible con Python 3.13 - Deshabilitado")
+            azure_handler.setFormatter(formatter)
+            logger.addHandler(azure_handler)
+            print("[INFO] Application Insights habilitado correctamente")
         except Exception as e:
             # Si falla Application Insights, continuar sin él
-            print(f"[WARNING] Application Insights falló: {e}")
+            print(f"[WARNING] No se pudo configurar Application Insights: {e}")
 
     return logger
 

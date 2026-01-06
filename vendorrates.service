@@ -1,0 +1,30 @@
+[Unit]
+Description=VendorRatesService - Apollo OBR Processing Microservice
+After=network.target
+
+[Service]
+Type=simple
+User=idt3vapp
+Group=idt3vapp
+WorkingDirectory=/opt/pythonapps/VendorRatesService
+Environment="PATH=/opt/pythonapps/VendorRatesService/venv/bin"
+
+# Comando para ejecutar la aplicación
+ExecStart=/opt/pythonapps/VendorRatesService/venv/bin/python main.py
+
+# Reiniciar automáticamente si falla
+Restart=always
+RestartSec=10
+
+# Logs
+StandardOutput=append:/opt/pythonapps/VendorRatesService/logs/service.log
+StandardError=append:/opt/pythonapps/VendorRatesService/logs/service-error.log
+
+# Límites de recursos
+LimitNOFILE=65535
+
+# Variables de entorno (opcional)
+# Environment="LOG_LEVEL=INFO"
+
+[Install]
+WantedBy=multi-user.target
