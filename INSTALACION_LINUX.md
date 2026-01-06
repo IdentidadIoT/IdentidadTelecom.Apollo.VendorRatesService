@@ -1,79 +1,146 @@
-# Instalación de VendorRatesService en Linux Ubuntu 22.04
+# Instalación de VendorRatesService en Ubuntu 22.04
 
-**IMPORTANTE:** Esta guía asume que ya tienes los archivos en `/opt/pythonapps/VendorRatesService/` en el servidor.
-
-## 📋 Pre-requisitos
-
-- Ubuntu 22.04 LTS ✅
-- Python 3.10.12 ✅
-- Usuario: `idt3vapp` ✅
-- Acceso sudo (necesario para instalación)
-- Puerto 63400 libre ✅
-- Archivos en /opt/pythonapps/VendorRatesService/ ✅
+Guía de instalación simplificada para VendorRatesService en Linux.
 
 ---
 
-## 🚀 Instalación Paso a Paso
+## 📋 Pre-requisitos
 
-### PASO 1: Ir al directorio y ejecutar instalación (necesita sudo)
+- Ubuntu 22.04 LTS
+- Acceso sudo (para instalar dependencias del sistema)
+- Usuario de aplicación: `idt3vapp` (debe existir)
+
+---
+
+## 📦 Preparar archivos para publicar
+
+Desde Windows, comprimir los archivos del proyecto:
+
+```powershell
+# En PowerShell (desde la carpeta del proyecto)
+tar -czvf proyecto.tar.gz `
+  --exclude=VendorRatesService/venv `
+  --exclude=VendorRatesService/.git `
+  --exclude=VendorRatesService/logs `
+  --exclude=VendorRatesService/.vscode `
+  --exclude='*/__pycache__/*' `
+  --exclude='*.pyc' `
+  VendorRatesService
+```
+
+Esto crea `proyecto.tar.gz` con todos los archivos necesarios.
+
+---
+
+## 🚀 Instalación en el Servidor
+
+### PASO 1: Subir archivos al servidor
+
+Usando WinSCP, FileZilla, o `scp`:
 
 ```bash
-# Ir al directorio
-cd /opt/pythonapps/VendorRatesService
+# Ejemplo con scp
+scp proyecto.tar.gz usuario@servidor:/tmp/
+```
+
+### PASO 2: Descomprimir en el directorio deseado
+
+```bash
+# Conectar al servidor
+ssh usuario@servidor
+
+# Ir al directorio donde quieres la aplicación
+# Puede ser cualquiera de estos:
+cd /opt/pythonapps/
+# O
+cd ~/pythonapps/
+# O el directorio que prefieras
+
+# Descomprimir
+tar -xzvf /tmp/proyecto.tar.gz
 
 # Verificar que los archivos están
-ls -la
+ls -la VendorRatesService/
+```
+
+Deberías ver:
+```
+main.py
+config.py
+requirements.txt
+config/
+core/
+setup-linux.sh
+setup-manual.sh
+...
+```
+
+### PASO 3: Ejecutar instalación con sudo
+
+```bash
+# Ir al directorio de la aplicación
+cd VendorRatesService/
 
 # Dar permisos de ejecución al script
 chmod +x setup-linux.sh
 
-# IMPORTANTE: Ejecutar con sudo
+# Ejecutar instalación (requiere sudo)
 sudo bash setup-linux.sh
 ```
 
 **El script hará:**
-1. Actualizar paquetes del sistema
-2. Instalar Python y dependencias
-3. Instalar ODBC Driver 17 para SQL Server
-4. Crear directorios necesarios
-5. Crear virtual environment
-6. Instalar paquetes Python
-7. Configurar permisos
+1. ✅ Verificar Python 3, pip, python3-venv
+2. ✅ Verificar ODBC Driver para SQL Server
+3. ✅ Instalar SOLO las dependencias faltantes
+4. ✅ Crear directorios necesarios (logs/, temp_vendor_files/)
+5. ✅ Crear virtual environment
+6. ✅ Instalar dependencias Python
+7. ✅ Cambiar permisos al usuario `idt3vapp`
+
+**IMPORTANTE**: El script trabaja en el directorio actual, NO copia archivos a otro lugar.
 
 ---
 
-### PASO 2: Verificar configuración de archivos
+## ⚙️ Configuración
+
+### Verificar configuración de base de datos
 
 ```bash
-# Verificar que los archivos de configuración estén correctos
-cat config/config.cfg
-
-# Si necesitas editar algo:
-sudo nano config/config.cfg
+nano config/config.cfg
 ```
 
-**Verifica especialmente:**
-- `[Database_SQLServer]` - Credenciales de Azure SQL
-- `[Smtp_Server]` - Configuración de email
-- `[AppInsights]` - enabled = true
-- `[Apollo_Auth]` - Credenciales JWT (cliente, password, secret)
+**Verifica:**
+- `[Database_SQLServer]` - Credenciales Azure SQL
+- `[Apollo_Auth]` - Credenciales JWT
+- `[Smtp_Server]` - Configuración email
+- `[AppInsights]` - Instrumentación Azure
 
-**Configuración importante:**
-Asegúrate que el puerto esté configurado correctamente en `config.cfg`:
+**Si el script advirtió sobre ODBC Driver 18:**
 ```ini
-[General]
-port = 63400
+[Database_SQLServer]
+# Cambiar de:
+DB_DRIVER = ODBC Driver 17 for SQL Server
+# A:
+DB_DRIVER = ODBC Driver 18 for SQL Server
 ```
 
 ---
 
-### PASO 3: Probar la aplicación manualmente
+## 🎯 Ejecutar la Aplicación
+
+### Opción 1: Prueba manual (para testing)
 
 ```bash
+# Cambiar al usuario de aplicación
+su - idt3vapp
+
+# Ir al directorio
+cd /opt/pythonapps/VendorRatesService  # (o donde descomprimiste)
+
 # Activar virtual environment
 source venv/bin/activate
 
-# Ejecutar aplicación
+# Ejecutar
 python main.py
 ```
 
@@ -85,315 +152,291 @@ python main.py
 INFO:     Uvicorn running on http://0.0.0.0:63400 (Press CTRL+C to quit)
 ```
 
-**Probar en otra terminal:**
+**En otra terminal, probar:**
 ```bash
-# Test de health check
+# Health check
 curl http://localhost:63400/
 
-# Test de login JWT
+# Test JWT login
 curl -X POST http://localhost:63400/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"apollo","password":"1d3nt1d@d5m5."}'
-
-# Ver documentación API
-curl http://localhost:63400/docs
 ```
 
-**Probar desde tu máquina Windows (reemplaza IP):**
-```bash
-# Test de login desde red
-curl -X POST http://172.16.111.67:63400/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"apollo","password":"1d3nt1d@d5m5."}'
-```
-
-Si funciona, presiona `Ctrl+C` para detener y continúa al siguiente paso.
+Si funciona, presiona `Ctrl+C` y continúa al siguiente paso.
 
 ---
 
-### PASO 4: Crear servicio systemd (necesita sudo)
+### Opción 2: Ejecutar en background con screen (RECOMENDADO)
 
 ```bash
-# Copiar archivo de servicio
-sudo cp vendorrates.service /etc/systemd/system/
+# Cambiar al usuario de aplicación
+su - idt3vapp
 
-# Recargar systemd
-sudo systemctl daemon-reload
-
-# Habilitar servicio para inicio automático
-sudo systemctl enable vendorrates.service
-
-# Iniciar servicio
-sudo systemctl start vendorrates.service
-
-# Verificar estado
-sudo systemctl status vendorrates.service
-```
-
-**Comandos útiles:**
-```bash
-# Ver logs del servicio
-sudo journalctl -u vendorrates.service -f
-
-# Reiniciar servicio
-sudo systemctl restart vendorrates.service
-
-# Detener servicio
-sudo systemctl stop vendorrates.service
-
-# Ver logs de la aplicación
-tail -f /opt/pythonapps/VendorRatesService/logs/vendor-rates-service.log
-```
-
----
-
-### PASO 5: Actualizar frontend C# para apuntar al servidor Linux
-
-En tu `Web.config` del frontend C#:
-
-```xml
-<!-- ANTES (localhost) -->
-<add key="VendorRatesBackUrl" value="http://localhost:63400" />
-
-<!-- DESPUÉS (servidor Linux con IP) -->
-<add key="VendorRatesBackUrl" value="http://172.16.111.67:63400" />
-
-<!-- O si usas hostname -->
-<add key="VendorRatesBackUrl" value="http://mi1-dev-app067:63400" />
-```
-
-**IMPORTANTE:** Nota que ahora incluimos el puerto **:63400** porque accedemos directamente al servicio Python sin Nginx.
-
-Las credenciales JWT ya deben estar configuradas:
-```xml
-<add key="UsernameVendorRatesApi" value="apollo" />
-<add key="PasswordVendorRatesApi" value="1d3nt1d@d5m5." />
-```
-
----
-
-### PASO 6: Verificar que todo funciona
-
-```bash
-# 1. Verificar servicio
-sudo systemctl status vendorrates.service
-
-# 2. Test desde localhost
-curl http://localhost:63400/
-
-# 3. Test de login
-curl -X POST http://localhost:63400/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"apollo","password":"1d3nt1d@d5m5."}'
-
-# 4. Ver logs en tiempo real
-tail -f /opt/pythonapps/VendorRatesService/logs/vendor-rates-service.log
-```
-
-**Desde tu máquina Windows:**
-```
-http://172.16.111.67:63400/docs
-```
-
----
-
-## 🔧 Troubleshooting
-
-### Error: "No module named 'pyodbc'"
-```bash
+# Ir al directorio
 cd /opt/pythonapps/VendorRatesService
-source venv/bin/activate
-pip install pyodbc
-```
 
-### Error: "Can't open lib 'ODBC Driver 17 for SQL Server'"
-```bash
-# Verificar instalación de ODBC Driver
-odbcinst -q -d -n "ODBC Driver 17 for SQL Server"
+# Verificar que screen está instalado
+which screen
+# Si no está: sudo apt-get install screen
 
-# Si no está instalado, ejecutar:
-sudo apt-get update
-ACCEPT_EULA=Y sudo apt-get install -y msodbcsql17
+# Crear sesión screen
+screen -S vendorrates
 
-# Si tienes Driver 18, actualiza config.cfg:
-nano config/config.cfg
-# Cambiar: DB_DRIVER = ODBC Driver 18 for SQL Server
-```
-
-### Servicio no inicia
-```bash
-# Ver logs detallados
-sudo journalctl -u vendorrates.service -n 100 --no-pager
-
-# Verificar permisos
-ls -la /opt/pythonapps/VendorRatesService
-sudo chown -R idt3vapp:idt3vapp /opt/pythonapps/VendorRatesService
-
-# Probar manualmente
-cd /opt/pythonapps/VendorRatesService
+# Activar venv y ejecutar
 source venv/bin/activate
 python main.py
+
+# Para DETACH (dejar corriendo en background):
+# Presiona: Ctrl+A, luego D
 ```
 
-### Puerto 63400 ya en uso
+**Comandos útiles de screen:**
 ```bash
-# Ver qué está usando el puerto
-sudo netstat -tlnp | grep 63400
+# Ver sesiones activas
+screen -ls
 
-# Matar proceso si es necesario
-sudo kill <PID>
+# Reconectar a la sesión
+screen -r vendorrates
 
-# O cambiar puerto en config/config.cfg:
-[General]
-port = 63401
+# Matar sesión (si necesitas reiniciar)
+screen -X -S vendorrates quit
 ```
 
-### Error de conexión desde Windows
-```bash
-# Verificar firewall en servidor Linux
-sudo ufw status
-sudo ufw allow 63400/tcp
+---
 
-# Verificar que la aplicación escucha en todas las interfaces (0.0.0.0)
-netstat -tlnp | grep 63400
-# Debe mostrar: 0.0.0.0:63400 (NO 127.0.0.1:63400)
+### Opción 3: Scripts de inicio/detención con nohup
+
+Crear scripts para facilitar el manejo:
+
+**Crear start.sh:**
+```bash
+nano start.sh
 ```
 
-### Application Insights falla
 ```bash
-# Si ves warning de Application Insights, es normal
-# La app funcionará sin problemas
-# Para deshabilitar, edita config.cfg:
-[AppInsights]
-enabled = false
+#!/bin/bash
+cd /opt/pythonapps/VendorRatesService  # Ajustar ruta
+source venv/bin/activate
+nohup python main.py > logs/nohup.log 2>&1 &
+echo $! > vendorrates.pid
+echo "VendorRatesService iniciado (PID: $(cat vendorrates.pid))"
+```
+
+**Crear stop.sh:**
+```bash
+nano stop.sh
+```
+
+```bash
+#!/bin/bash
+if [ -f /opt/pythonapps/VendorRatesService/vendorrates.pid ]; then
+    PID=$(cat /opt/pythonapps/VendorRatesService/vendorrates.pid)
+    kill $PID
+    rm /opt/pythonapps/VendorRatesService/vendorrates.pid
+    echo "VendorRatesService detenido (PID: $PID)"
+else
+    echo "No se encontró archivo PID"
+fi
+```
+
+**Dar permisos y usar:**
+```bash
+chmod +x start.sh stop.sh
+
+# Iniciar
+./start.sh
+
+# Detener
+./stop.sh
+
+# Ver logs
+tail -f logs/nohup.log
 ```
 
 ---
 
 ## 📊 Monitoreo
 
-### Ver logs en tiempo real
+### Ver logs
 ```bash
 # Logs de aplicación
-tail -f /opt/pythonapps/VendorRatesService/logs/vendor-rates-service.log
+tail -f logs/vendor-rates-service.log
 
-# Logs de servicio systemd
-sudo journalctl -u vendorrates.service -f
-
-# Ver solo errores
-sudo journalctl -u vendorrates.service -p err
+# Logs de nohup (si usas nohup)
+tail -f logs/nohup.log
 ```
 
-### Verificar uso de recursos
+### Ver proceso
 ```bash
-# Memoria y CPU
-top -p $(pgrep -f "python.*main.py")
+# Ver si está corriendo
+ps aux | grep "python main.py"
 
-# Conexiones activas
-ss -tnp | grep :63400
-
-# Espacio en disco
-df -h /opt/pythonapps/VendorRatesService
-```
-
-### Verificar conectividad
-```bash
-# Desde el servidor
-curl http://localhost:63400/
-
-# Desde otra máquina en la red
-curl http://172.16.111.67:63400/
-
-# Ver qué interfaces están escuchando
+# Ver puerto escuchando
 netstat -tlnp | grep 63400
+
+# Ver uso de recursos
+top -u idt3vapp
 ```
 
 ---
 
-## 🔄 Actualización de la aplicación
+## 🔄 Actualización de la Aplicación
 
 ```bash
-# 1. Detener servicio
-sudo systemctl stop vendorrates.service
+# 1. Detener aplicación
+screen -X -S vendorrates quit
+# O si usas nohup:
+./stop.sh
 
-# 2. Hacer backup
-sudo cp -r /opt/pythonapps/VendorRatesService /opt/pythonapps/VendorRatesService.backup.$(date +%Y%m%d)
+# 2. Backup (importante!)
+cd /opt/pythonapps/
+cp -r VendorRatesService VendorRatesService.backup.$(date +%Y%m%d)
 
-# 3. Subir nuevos archivos (desde Windows con WinSCP/scp)
-# O copiar archivos manualmente
+# 3. Subir nuevo proyecto.tar.gz y descomprimir
+# IMPORTANTE: Esto reemplazará los archivos existentes
+cd VendorRatesService/
+tar -xzvf /tmp/proyecto.tar.gz --strip-components=1
 
-# 4. Actualizar dependencias si es necesario
-cd /opt/pythonapps/VendorRatesService
+# 4. Actualizar dependencias si cambió requirements.txt
 source venv/bin/activate
 pip install -r requirements.txt
 
-# 5. Verificar configuración
-cat config/config.cfg
+# 5. Verificar configuración (por si hay nuevos parámetros)
+nano config/config.cfg
 
-# 6. Reiniciar servicio
-sudo systemctl start vendorrates.service
+# 6. Reiniciar con screen
+screen -S vendorrates
+source venv/bin/activate
+python main.py
+# Ctrl+A, D
 
-# 7. Verificar estado
-sudo systemctl status vendorrates.service
-tail -f logs/vendor-rates-service.log
+# O reiniciar con nohup:
+./start.sh
 ```
 
 ---
 
-## ✅ Checklist Final
+## ⚠️ Troubleshooting
 
-- [ ] Script setup-linux.sh ejecutado correctamente
-- [ ] ODBC Driver 17 instalado y funcionando
-- [ ] Archivos de configuración revisados (config.cfg)
+### Error: "No module named 'pyodbc'"
+```bash
+source venv/bin/activate
+pip install pyodbc
+```
+
+### Error: "Can't open lib 'ODBC Driver 17 for SQL Server'"
+```bash
+# Verificar drivers instalados
+odbcinst -q -d
+
+# Si ves "ODBC Driver 18", actualizar config.cfg:
+nano config/config.cfg
+# Cambiar a: DB_DRIVER = ODBC Driver 18 for SQL Server
+
+# Si no hay ningún driver, instalar:
+sudo apt-get update
+sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17
+```
+
+### Puerto 63400 ya en uso
+```bash
+# Ver qué está usando el puerto
+netstat -tlnp | grep 63400
+
+# Matar el proceso si es necesario
+kill <PID>
+```
+
+### Screen no disponible
+```bash
+# Verificar
+which screen
+
+# Instalar
+sudo apt-get install screen
+
+# Alternativa: usar nohup (ver Opción 3 arriba)
+```
+
+### Permisos incorrectos
+```bash
+# Si el usuario idt3vapp no puede escribir logs
+cd /opt/pythonapps/
+sudo chown -R idt3vapp:idt3vapp VendorRatesService/
+```
+
+---
+
+## 🎯 Acceso desde el Frontend C#
+
+Configurar en [Web.config](../Frontend/Web.config):
+
+```xml
+<add key="VendorRatesBackUrl" value="http://172.16.111.67:63400" />
+<add key="UsernameVendorRatesApi" value="apollo" />
+<add key="PasswordVendorRatesApi" value="1d3nt1d@d5m5." />
+```
+
+Reemplazar `172.16.111.67` con la IP real del servidor Linux.
+
+---
+
+## ✅ Checklist de Instalación
+
+- [ ] Archivos descomprimidos en el servidor
+- [ ] Script setup-linux.sh ejecutado exitosamente
+- [ ] ODBC Driver verificado (o instalado)
+- [ ] Archivo config/config.cfg revisado y configurado
 - [ ] Aplicación probada manualmente (curl localhost:63400)
-- [ ] Servicio systemd creado y funcionando
-- [ ] Puerto 63400 accesible desde red (firewall configurado)
-- [ ] Frontend C# actualizado con URL del servidor:63400
-- [ ] Test de login JWT desde frontend exitoso
-- [ ] Test end-to-end: subir archivo OBR funcionando
+- [ ] Screen instalado (o scripts nohup creados)
+- [ ] Aplicación corriendo en background
+- [ ] Frontend C# actualizado con URL del servidor
+- [ ] Test end-to-end desde frontend funcionando
 
 ---
 
-## 📞 Soporte
+## 📍 Rutas Importantes
 
-Si necesitas ayuda, revisa en orden:
-
-1. **Logs de aplicación:**
-   ```bash
-   tail -f /opt/pythonapps/VendorRatesService/logs/vendor-rates-service.log
-   ```
-
-2. **Logs de systemd:**
-   ```bash
-   sudo journalctl -u vendorrates.service -n 100
-   ```
-
-3. **Estado del servicio:**
-   ```bash
-   sudo systemctl status vendorrates.service
-   ```
-
-4. **Verificar conectividad:**
-   ```bash
-   curl -v http://localhost:63400/
-   netstat -tlnp | grep 63400
-   ```
+```
+/opt/pythonapps/VendorRatesService/     # Directorio de aplicación
+├── main.py                              # Punto de entrada
+├── config/config.cfg                    # Configuración principal
+├── logs/vendor-rates-service.log        # Logs de aplicación
+├── venv/                                # Virtual environment
+└── temp_vendor_files/                   # Archivos temporales
+```
 
 ---
 
-## 🔗 URLs de Acceso
+## 📞 Resumen: Comandos Rápidos
 
-**Desde el servidor Linux:**
-- Health check: `http://localhost:63400/`
-- Documentación: `http://localhost:63400/docs`
-- Login: `http://localhost:63400/api/auth/login`
+```bash
+# Instalación inicial
+cd /ruta/donde/descomprimiste/VendorRatesService/
+sudo bash setup-linux.sh
 
-**Desde Windows (red interna):**
-- Health check: `http://172.16.111.67:63400/`
-- Documentación: `http://172.16.111.67:63400/docs`
-- API endpoints: `http://172.16.111.67:63400/api/vendorRates/...`
+# Iniciar (con screen)
+su - idt3vapp
+cd /opt/pythonapps/VendorRatesService
+screen -S vendorrates
+source venv/bin/activate && python main.py
+# Ctrl+A, D
 
-**NOTA:** Si no puedes acceder desde Windows, verifica:
-1. Firewall en Linux: `sudo ufw allow 63400/tcp`
-2. La app escucha en 0.0.0.0: `netstat -tlnp | grep 63400`
-3. No hay firewall de red bloqueando el puerto
+# Ver sesiones screen
+screen -ls
+
+# Reconectar
+screen -r vendorrates
+
+# Ver logs
+tail -f logs/vendor-rates-service.log
+
+# Test local
+curl http://localhost:63400/
+
+# Test login JWT
+curl -X POST http://localhost:63400/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"apollo","password":"1d3nt1d@d5m5."}'
+```
