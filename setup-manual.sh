@@ -11,7 +11,7 @@
 # - Pide confirmación antes de instalar paquetes del sistema
 ################################################################################
 
-set -e
+# NO usar set -e para que el script continue aunque falle algún comando opcional
 
 # Colores
 GREEN='\033[0;32m'
@@ -251,11 +251,24 @@ if [ -d "venv" ]; then
         echo "Eliminando venv anterior..."
         rm -rf venv
         echo "Creando nuevo virtual environment..."
-        python3 -m venv venv
+        if ! python3 -m venv venv 2>/dev/null; then
+            echo -e "${RED}ERROR: No se pudo crear el virtual environment${NC}"
+            echo -e "${YELLOW}Instala python3-venv: sudo apt-get install -y python3-venv${NC}"
+            exit 1
+        fi
     fi
 else
     echo "Creando virtual environment..."
-    python3 -m venv venv
+    if ! python3 -m venv venv 2>/dev/null; then
+        echo -e "${RED}ERROR: No se pudo crear el virtual environment${NC}"
+        echo -e "${YELLOW}Instala python3-venv: sudo apt-get install -y python3-venv${NC}"
+        exit 1
+    fi
+fi
+
+if [ ! -d "venv" ]; then
+    echo -e "${RED}ERROR: No existe el directorio venv${NC}"
+    exit 1
 fi
 
 echo -e "${YELLOW}Instalando dependencias Python...${NC}"

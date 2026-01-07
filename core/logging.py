@@ -45,11 +45,17 @@ def setup_logging() -> logging.Logger:
                 connection_string=f"InstrumentationKey={settings.appinsights_instrumentation_key}"
             )
             azure_handler.setFormatter(formatter)
+            azure_handler.setLevel(logging.INFO)
             logger.addHandler(azure_handler)
-            print("[INFO] Application Insights habilitado correctamente")
+
+            # Log de prueba
+            logger.info("[APP INSIGHTS TEST] VendorRatesService conectado a Application Insights")
+
+            print(f"[INFO] Application Insights habilitado (export_interval: 5s)")
         except Exception as e:
-            # Si falla Application Insights, continuar sin él
             print(f"[WARNING] No se pudo configurar Application Insights: {e}")
+            import traceback
+            traceback.print_exc()
 
     return logger
 

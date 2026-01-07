@@ -11,7 +11,7 @@
 # - NO toca repositorios innecesariamente
 ################################################################################
 
-set -e
+# NO usar set -e para que el script continue aunque falle algún comando opcional
 
 # Colores para output
 RED='\033[0;31m'
@@ -266,8 +266,18 @@ if [ -d "venv" ]; then
 fi
 
 echo "Creando virtual environment..."
-python3 -m venv venv
-echo -e "${GREEN}✓ Virtual environment creado${NC}"
+if python3 -m venv venv 2>/dev/null; then
+    echo -e "${GREEN}✓ Virtual environment creado${NC}"
+else
+    echo -e "${RED}ERROR: No se pudo crear el virtual environment${NC}"
+    echo -e "${YELLOW}Esto puede ser porque falta python3-venv.${NC}"
+    echo ""
+    echo "Por favor ejecuta manualmente:"
+    echo "  sudo apt-get install -y python3-venv"
+    echo ""
+    echo "Luego ejecuta este script nuevamente."
+    exit 1
+fi
 
 echo -e "${YELLOW}Instalando dependencias Python...${NC}"
 source venv/bin/activate
