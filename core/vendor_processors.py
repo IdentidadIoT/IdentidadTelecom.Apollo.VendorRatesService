@@ -23,11 +23,13 @@ class TwoSheetVendorProcessor(VendorProcessorBase):
 
     Vendors que usan este procesador:
     - Belgacom Platinum
-    - Sunrise
     - Orange France Platinum
     - Orange France Win
     - Ibasis Global Inc Premium
     - HGC Premium
+
+    NOTA: Sunrise NO usa este procesador. Tiene su propia lógica
+    dedicada en obr_service.py:process_sunrise_file().
     """
 
     async def _read_vendor_data(self, temp_files: List[str]) -> Dict[str, Any]:

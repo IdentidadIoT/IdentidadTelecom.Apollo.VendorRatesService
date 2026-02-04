@@ -32,35 +32,17 @@ class OBRService:
     @staticmethod
     def _parse_and_split_dial_codes(dial_codes_str: str) -> List[str]:
         """
-        Parsea y separa códigos de marcación que pueden contener:
-        - Múltiples códigos separados por ';' (ej: "31;32;33")
-        - Rangos con '-' (ej: "31-35" se expande a ["31", "32", "33", "34", "35"])
-        - Combinaciones (ej: "31;33-35" se expande a ["31", "33", "34", "35"])
+        Parsea y separa códigos de marcación.
+        Replica exactamente el comportamiento de ParseAndSplit en C#:
+        Split por ';' y '-' como separadores simples (sin expansión de rangos).
+
+        C# original (ProcessRatesByCustomerBusiness.cs:6061):
+            char[] separators = { ';', '-' };
+            string[] parts = input.Split(separators, StringSplitOptions.RemoveEmptyEntries);
         """
-        result = []
-
-        # Dividir por punto y coma
-        parts = dial_codes_str.split(';')
-
-        for part in parts:
-            part = part.strip()
-            if '-' in part:
-                # Es un rango, expandirlo
-                range_parts = part.split('-')
-                if len(range_parts) == 2:
-                    try:
-                        start = int(range_parts[0].strip())
-                        end = int(range_parts[1].strip())
-                        for i in range(start, end + 1):
-                            result.append(str(i))
-                    except ValueError:
-                        # Si no son números, agregar tal cual
-                        result.append(part)
-            else:
-                # Código simple
-                result.append(part)
-
-        return result
+        import re
+        parts = re.split(r'[;\-]', dial_codes_str)
+        return [p.strip() for p in parts if p.strip()]
 
     async def process_belgacom_file(
         self,
@@ -145,7 +127,8 @@ class OBRService:
         self,
         file_content: bytes,
         file_name: str,
-        user_email: str
+        user_email: str,
+        max_line: int = None
     ) -> bool:
         """
         Procesa archivo OBR de Sunrise
@@ -165,6 +148,21 @@ class OBRService:
             # 2. Leer datos del archivo Excel (2 hojas: Pricing y Origin)
             price_list = self.excel_service.read_sunrise_price_list(file_path)
             origin_mapping = self.excel_service.read_sunrise_origin_mapping(file_path)
+
+            # C# usa upload.MaxLine para limitar filas del Excel
+            # (ReadSunriseVendorRates, línea 7546: int lastRow = upload.MaxLine)
+            # C# loop: for (int i = 14; i < lastRow; i++) → lee MaxLine - 14 filas
+            # max_line viene del request (frontend); si no, intentar de BD como fallback
+            if max_line is None:
+                max_line = self.repository.get_vendor_max_line("Sunrise")
+            if max_line is not None:
+                expected_count = max_line - 14
+                if len(price_list) > expected_count:
+                    logger.info(
+                        f"[Sunrise] Truncando price_list de {len(price_list)} a "
+                        f"{expected_count} registros (MaxLine={max_line})"
+                    )
+                    price_list = price_list[:expected_count]
 
             # 3. Obtener datos maestros OBR (con cache)
             obr_master_data = self._get_obr_master_data_cached()
@@ -187,10 +185,13 @@ class OBRService:
             )
 
             # 6. Generar archivo CSV
+            # C# GenerateOBRSunriseFile usa header "OriginCode" (no "Routing")
             csv_file_path = self._generate_csv_file(
                 csv_data=csv_data,
                 vendor_name="Sunrise",
-                use_variable_decimals=True
+                decimal_places=4,
+                use_variable_decimals=False,
+                origin_column_header="OriginCode"
             )
 
             # 7. Enviar email de éxito con CSV adjunto
@@ -795,10 +796,11 @@ class OBRService:
         obr_master_data: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
-        Compara datos de Sunrise con datos maestros OBR
-        Implementa la misma lógica que el backend .NET (GenerateOBRSunriseFileDirect)
+        Compara datos de Sunrise con datos maestros OBR.
+        Implementa la misma lógica que el backend .NET (GenerateOBRSunriseFile, línea 3927).
         """
         logger.info("Iniciando comparación de datos Sunrise")
+        logger.info(f"  price_list: {len(price_list)} items, origin_mapping: {len(origin_mapping)} items")
 
         vendor_name_upper = "SUNRISE"
 
@@ -807,7 +809,10 @@ class OBRService:
             if item["vendor"].upper() == vendor_name_upper
         ]
 
-        logger.info(f"Datos maestros Sunrise: {len(sunrise_master_data)} registros")
+        logger.info(f"Datos maestros Sunrise en OBR: {len(sunrise_master_data)} registros")
+        if sunrise_master_data:
+            origin_codes = [item.get("origin_code", "N/A") for item in sunrise_master_data[:10]]
+            logger.info(f"  Primeros origin_codes en OBR: {origin_codes}")
 
         origin_mapping_index = {}
         for origin in origin_mapping:
@@ -815,6 +820,11 @@ class OBRService:
             if key not in origin_mapping_index:
                 origin_mapping_index[key] = []
             origin_mapping_index[key].append(origin)
+
+        logger.info(f"  origin_mapping_index: {len(origin_mapping_index)} unique dialed_digits")
+        if origin_mapping_index:
+            sample_keys = list(origin_mapping_index.keys())[:10]
+            logger.info(f"  Primeros dialed_digits del Excel: {sample_keys}")
 
         price_list_index = {}
         for price in price_list:
@@ -831,13 +841,19 @@ class OBRService:
             price_list_by_destination[dest].append(price)
 
         list_to_send_in_csv = []
-        unique_dial_codes = set()
+
+        records_with_obr_match = 0
+        records_without_obr_match = 0
 
         for vendor in sunrise_master_data:
             origin_code = str(vendor["origin_code"])
             routing = vendor["routing"]
 
             matching_origins = origin_mapping_index.get(origin_code, [])
+            logger.info(f"Origin code {origin_code} ({routing}): {len(matching_origins)} matching origins en Excel")
+
+            # C# línea 3954: HashSet se RESETEA por cada vendor del OBR master
+            price_unique_codes = set()
 
             for origin in matching_origins:
                 origin_set = origin["origin_set"]
@@ -850,14 +866,25 @@ class OBRService:
                     None
                 )
 
-                for price_item in matching_prices:
-                    if first_match is not None:
-                        dial_codes = self._parse_and_split_dial_codes(price_item["dial_codes"])
+                is_vodafone = routing.lower() == "vodafone"
 
+                for price_item in matching_prices:
+                    # Lógica de Vodafone (C# líneas 3960-4099):
+                    # - vodafone + NL: usa first_match si existe, sino biggestRate
+                    # - vodafone + NO NL: siempre usa biggestRate
+                    # - no vodafone: usa first_match si existe, sino biggestRate
+                    use_first_match = (
+                        first_match is not None
+                        and (not is_vodafone or origin_set == "NL")
+                    )
+
+                    if use_first_match:
+                        dial_codes = self._parse_and_split_dial_codes(price_item["dial_codes"])
                         for dial_code in dial_codes:
-                            if dial_code.strip() and dial_code.strip() not in unique_dial_codes:
+                            if dial_code.strip() and dial_code.strip() not in price_unique_codes:
                                 list_to_send_in_csv.append({
-                                    "destinations": first_match["destination"],
+                                    # C# usa destiny.Destination (item actual), NO priceListSunriseItem
+                                    "destinations": price_item["destination"],
                                     "country_code": dial_code.strip(),
                                     "area_code": "",
                                     "country_area": dial_code.strip(),
@@ -865,7 +892,7 @@ class OBRService:
                                     "start_date": first_match["effective_date"],
                                     "origin_name": routing
                                 })
-                                unique_dial_codes.add(dial_code.strip())
+                                price_unique_codes.add(dial_code.strip())
 
                     else:
                         same_dial_code_prices = [
@@ -877,11 +904,11 @@ class OBRService:
                             max_price_item = max(same_dial_code_prices, key=lambda x: x["rate"])
 
                             dial_codes = self._parse_and_split_dial_codes(price_item["dial_codes"])
-
                             for dial_code in dial_codes:
-                                if dial_code.strip() and dial_code.strip() not in unique_dial_codes:
+                                if dial_code.strip() and dial_code.strip() not in price_unique_codes:
                                     list_to_send_in_csv.append({
-                                        "destinations": max_price_item["destination"],
+                                        # C# usa destiny.Destination (item actual)
+                                        "destinations": price_item["destination"],
                                         "country_code": dial_code.strip(),
                                         "area_code": "",
                                         "country_area": dial_code.strip(),
@@ -889,21 +916,23 @@ class OBRService:
                                         "start_date": max_price_item["effective_date"],
                                         "origin_name": routing
                                     })
-                                    unique_dial_codes.add(dial_code.strip())
+                                    price_unique_codes.add(dial_code.strip())
 
-        unique_destinations_final = set()
+        obr_record_count = len(list_to_send_in_csv)
+        logger.info(f"Registros CON match en OBR Master Data: {obr_record_count}")
+
+        # C# línea 4102: HashSet SEPARADO para el loop final
+        price_unique_codes_final = set()
+        final_loop_records = []
 
         for destination, prices in price_list_by_destination.items():
-            if destination in unique_destinations_final:
-                continue
-
             max_price_item = max(prices, key=lambda x: x["rate"])
 
             dial_codes = self._parse_and_split_dial_codes(max_price_item["dial_codes"])
             first_dial_code = dial_codes[0] if dial_codes else ""
 
-            if first_dial_code.strip() and first_dial_code.strip() not in unique_dial_codes:
-                list_to_send_in_csv.append({
+            if first_dial_code.strip() and first_dial_code.strip() not in price_unique_codes_final:
+                final_loop_records.append({
                     "destinations": max_price_item["destination"],
                     "country_code": first_dial_code.strip(),
                     "area_code": "",
@@ -912,10 +941,15 @@ class OBRService:
                     "start_date": max_price_item["effective_date"],
                     "origin_name": ""
                 })
-                unique_dial_codes.add(first_dial_code.strip())
+                price_unique_codes_final.add(first_dial_code.strip())
 
-            unique_destinations_final.add(destination)
+        logger.info(f"Registros del loop final (sin OBR): {len(final_loop_records)}")
 
+        # Combinar OBR + final loop
+        list_to_send_in_csv.extend(final_loop_records)
+        logger.info(f"Total ANTES de GroupBy deduplicación: {len(list_to_send_in_csv)}")
+
+        # C# línea 4125: GroupBy deduplicación en (DialCodes, Rate, Origin)
         seen = set()
         deduplicated_list = []
         for item in list_to_send_in_csv:
@@ -923,6 +957,27 @@ class OBRService:
             if key not in seen:
                 seen.add(key)
                 deduplicated_list.append(item)
+
+        logger.info(f"Total DESPUÉS de GroupBy deduplicación: {len(deduplicated_list)}")
+
+        # C# línea 4130: Validación - el resultado no debe exceder el tamaño del price list
+        # if (listToSendInCSV.Count <= priceListSunrise.Count) isSuccessful = true;
+        if len(deduplicated_list) > len(price_list):
+            logger.warning(
+                f"VALIDACIÓN C#: resultado ({len(deduplicated_list)}) EXCEDE "
+                f"price_list ({len(price_list)}). "
+                f"En C# esto marcaría el proceso como fallido. "
+                f"Descartando {obr_record_count} registros OBR y usando solo loop final."
+            )
+            # Deduplicar solo los registros del loop final
+            seen_final = set()
+            deduplicated_list = []
+            for item in final_loop_records:
+                key = (item["country_code"], item["price_min"], item["origin_name"])
+                if key not in seen_final:
+                    seen_final.add(key)
+                    deduplicated_list.append(item)
+            logger.info(f"Registros finales (solo loop final): {len(deduplicated_list)}")
 
         logger.info(f"Comparación Sunrise completada: {len(deduplicated_list)} registros para CSV")
         return deduplicated_list
@@ -2343,7 +2398,8 @@ class OBRService:
         csv_data: List[Dict[str, Any]],
         vendor_name: str,
         decimal_places: int = 4,
-        use_variable_decimals: bool = False
+        use_variable_decimals: bool = False,
+        origin_column_header: str = "Routing"
     ) -> str:
         timestamp = datetime.now().strftime("%m_%d_%Y")
         file_name = f"{vendor_name}-{timestamp}.csv"
@@ -2367,7 +2423,7 @@ class OBRService:
                     "Dial codes",
                     "Price",
                     "Effective Date",
-                    "Routing"
+                    origin_column_header
                 ])
 
                 for item in sorted_csv_data:

@@ -175,9 +175,17 @@ class BelgacomComparisonStrategy(ComparisonStrategy):
         return list_to_send_in_csv
 
 
-class SunriseComparisonStrategy(ComparisonStrategy):
+class TwoSheetGenericComparisonStrategy(ComparisonStrategy):
     """
-    Estrategia de comparación para Sunrise (también usada por Orange France).
+    Estrategia GENÉRICA para vendors con 2 hojas (Price List + Origin Mapping)
+
+    VENDORS QUE USAN ESTA ESTRATEGIA:
+    - Orange France Platinum
+    - Orange France Win
+    - Ibasis Global Inc Premium
+    - HGC Premium
+
+    NOTA: Sunrise tiene su propia estrategia específica que hereda de esta.
 
     Lógica:
     - Para cada registro OBR master, filtrar price_list por origin
@@ -191,7 +199,7 @@ class SunriseComparisonStrategy(ComparisonStrategy):
         origin_mapping = vendor_data["origin_mapping"]
         vendor_name = config["display_name"]
 
-        logger.info(f"[{vendor_name}] Comparación Sunrise: {len(obr_master)} registros OBR")
+        logger.info(f"[{vendor_name}] Comparación TwoSheet: {len(obr_master)} registros OBR")
 
         list_to_send_in_csv = []
         unique_codes = set()
@@ -231,6 +239,13 @@ class SunriseComparisonStrategy(ComparisonStrategy):
 
         logger.info(f"[{vendor_name}] Comparación completada: {len(list_to_send_in_csv)} registros")
         return list_to_send_in_csv
+
+
+    # NOTA: Sunrise NO usa el patrón Strategy de este módulo.
+    # Su lógica de comparación está implementada directamente en
+    # obr_service.py:_compare_sunrise_data() porque tiene lógica especial
+    # (routing "vodafone" + OriginSet "NL", formato 4 decimales, etc.)
+    # que no encaja en TwoSheetGenericComparisonStrategy.
 
 
 # ============================================================================
@@ -453,10 +468,10 @@ class ApelbyComparisonStrategy(ComparisonStrategy):
 COMPARISON_STRATEGIES = {
     # Vendors de 2 hojas
     "belgacom": BelgacomComparisonStrategy(),
-    "sunrise": SunriseComparisonStrategy(),
-    "orange_france": SunriseComparisonStrategy(),  # Usa misma estrategia que Sunrise
-    "ibasis": SunriseComparisonStrategy(),  # TODO: Implementar estrategia específica si difiere
-    "hgc": SunriseComparisonStrategy(),  # TODO: Implementar estrategia específica si difiere
+    # NOTA: Sunrise no está aquí. Usa obr_service.py:_compare_sunrise_data() directamente
+    "orange_france": TwoSheetGenericComparisonStrategy(),  # Estrategia genérica 2 hojas
+    "ibasis": TwoSheetGenericComparisonStrategy(),  # Estrategia genérica 2 hojas
+    "hgc": TwoSheetGenericComparisonStrategy(),  # Estrategia genérica 2 hojas
 
     # Vendors de 3 hojas
     "oteglobe": OteglobeComparisonStrategy(),

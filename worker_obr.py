@@ -28,7 +28,8 @@ def _process_vendor_file_background(
     process_method_name: str,
     temp_file_path: str,
     file_name: str,
-    user_email: str
+    user_email: str,
+    max_line: int = None
 ):
     """
     Procesa archivo en THREAD separado (igual que Task.Run en C#)
@@ -46,11 +47,23 @@ def _process_vendor_file_background(
         # Crear event loop para este thread
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(process_method(
-            file_content=file_content,
-            file_name=file_name,
-            user_email=user_email
-        ))
+
+        # Solo pasar max_line si el método lo acepta (ej: Sunrise)
+        # Esto evita TypeError en vendors que no tienen ese parámetro
+        import inspect
+        if max_line is not None and 'max_line' in inspect.signature(process_method).parameters:
+            loop.run_until_complete(process_method(
+                file_content=file_content,
+                file_name=file_name,
+                user_email=user_email,
+                max_line=max_line
+            ))
+        else:
+            loop.run_until_complete(process_method(
+                file_content=file_content,
+                file_name=file_name,
+                user_email=user_email
+            ))
         loop.close()
     except Exception as e:
         logger.error(f"Error en procesamiento background: {e}", exc_info=True)
@@ -209,7 +222,7 @@ async def file_obr_comparison(
 
         thread = threading.Thread(
             target=_process_vendor_file_background,
-            args=(process_method_name, temp_file_path, file_name, user_email),
+            args=(process_method_name, temp_file_path, file_name, user_email, request.max_line),
             daemon=True
         )
         thread.start()

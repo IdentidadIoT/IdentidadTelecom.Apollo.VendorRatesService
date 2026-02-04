@@ -116,7 +116,7 @@ VENDOR_EXCEL_CONFIGS = {
         sheets={
             "price_list": SheetConfig(
                 name="Pricing",
-                start_row=15,
+                start_row=15,  # C# usa Cells[14,j] (0-based) = Excel row 15 (1-based)
                 column_mapping={
                     "destination": 0,
                     "origin_set": 1,
@@ -136,7 +136,7 @@ VENDOR_EXCEL_CONFIGS = {
             ),
             "origin_mapping": SheetConfig(
                 name="Origin",
-                start_row=2,
+                start_row=2,  # C# usa Cells[1,j] (0-based) = Excel row 2 (1-based)
                 column_mapping={
                     "origin_set": 0,
                     "origin_name": 1,
