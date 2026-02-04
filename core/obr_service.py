@@ -362,10 +362,12 @@ class OBRService:
             )
 
             # 6. Generar archivo CSV
+            # C# GenerateOBROrangeFrancePlatinumFile usa header "Origin"
             csv_file_path = self._generate_csv_file(
                 csv_data=csv_data,
                 vendor_name="Orange France Platinum",
-                decimal_places=6
+                decimal_places=6,
+                origin_column_header="Origin"
             )
 
             # 7. Enviar email de éxito con CSV adjunto
@@ -442,10 +444,12 @@ class OBRService:
             )
 
             # 6. Generar archivo CSV
+            # C# GenerateOBROrangeFranceWinFile usa header "OriginCode"
             csv_file_path = self._generate_csv_file(
                 csv_data=csv_data,
                 vendor_name="Orange France Win",
-                decimal_places=6
+                decimal_places=6,
+                origin_column_header="OriginCode"
             )
 
             # 7. Enviar email de éxito con CSV adjunto
